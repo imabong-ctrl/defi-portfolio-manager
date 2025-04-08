@@ -137,3 +137,48 @@
     (var-set portfolio-counter portfolio-id)
     (ok portfolio-id))
 )
+
+;; PORTFOLIO OPERATIONS
+
+(define-public (rebalance-portfolio (portfolio-id uint))
+    (let (
+        (portfolio (unwrap! (get-portfolio portfolio-id) ERR-INVALID-PORTFOLIO))
+    )
+    (asserts! (is-eq tx-sender (get owner portfolio)) ERR-NOT-AUTHORIZED)
+    (asserts! (get active portfolio) ERR-INVALID-PORTFOLIO)
+    
+    (map-set Portfolios portfolio-id
+        (merge portfolio {last-rebalanced: stacks-block-height})
+    )
+    (ok true))
+)
+
+(define-public (update-portfolio-allocation 
+    (portfolio-id uint) 
+    (token-id uint)
+    (new-percentage uint))
+    (let (
+        (portfolio (unwrap! (get-portfolio portfolio-id) ERR-INVALID-PORTFOLIO))
+        (asset (unwrap! (get-portfolio-asset portfolio-id token-id) ERR-INVALID-TOKEN))
+    )
+    (asserts! (is-eq tx-sender (get owner portfolio)) ERR-NOT-AUTHORIZED)
+    (asserts! (validate-percentage new-percentage) ERR-INVALID-PERCENTAGE)
+    (asserts! (validate-token-id portfolio-id token-id) ERR-INVALID-TOKEN-ID)
+    
+    (map-set PortfolioAssets
+        {portfolio-id: portfolio-id, token-id: token-id}
+        (merge asset {target-percentage: new-percentage})
+    )
+    (ok true))
+)
+
+;; INTERNAL HELPERS
+
+(define-private (validate-token-id (portfolio-id uint) (token-id uint))
+    (let ((portfolio (unwrap! (get-portfolio portfolio-id) false)))
+    (and 
+        (< token-id MAX-TOKENS-PER-PORTFOLIO)
+        (< token-id (get token-count portfolio))
+        true
+    ))
+)
