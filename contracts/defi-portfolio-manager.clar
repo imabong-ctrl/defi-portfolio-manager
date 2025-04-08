@@ -33,3 +33,44 @@
 (define-data-var protocol-fee uint u25)  ;; 0.25% fee in basis points (1 BP = 0.01%)
 (define-constant MAX-TOKENS-PER-PORTFOLIO u10)
 (define-constant BASIS-POINTS u10000)
+
+;; Data Storage - State management architecture
+(define-map Portfolios
+    uint  ;; NFT-style portfolio ID
+    {
+        owner: principal,
+        created-at: uint,
+        last-rebalanced: uint,
+        total-value: uint,  ;; Stored in satoshi equivalents
+        active: bool,
+        token-count: uint
+    }
+)
+
+(define-map PortfolioAssets
+    {portfolio-id: uint, token-id: uint}
+    {
+        target-percentage: uint,  ;; Basis points representation
+        current-amount: uint,     ;; Actual token quantity
+        token-address: principal  ;; SIP-010 compliant addresses
+    }
+)
+
+(define-map UserPortfolios
+    principal
+    (list 20 uint)  ;; Wallet-to-portfolio mapping
+)
+
+;; READ-ONLY INTERFACE
+
+(define-read-only (get-portfolio (portfolio-id uint))
+    (map-get? Portfolios portfolio-id)
+)
+
+(define-read-only (get-portfolio-asset (portfolio-id uint) (token-id uint))
+    (map-get? PortfolioAssets {portfolio-id: portfolio-id, token-id: token-id})
+)
+
+(define-read-only (get-user-portfolios (user principal))
+    (default-to (list) (map-get? UserPortfolios user))
+)
