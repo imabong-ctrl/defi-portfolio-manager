@@ -74,3 +74,66 @@
 (define-read-only (get-user-portfolios (user principal))
     (default-to (list) (map-get? UserPortfolios user))
 )
+
+(define-read-only (calculate-rebalance-amounts (portfolio-id uint))
+    (let (
+        (portfolio (unwrap! (get-portfolio portfolio-id) ERR-INVALID-PORTFOLIO))
+        (total-value (get total-value portfolio))
+    )
+    (ok {
+        portfolio-id: portfolio-id,
+        total-value: total-value,
+        needs-rebalance: (> (- stacks-block-height (get last-rebalanced portfolio)) u144)  ;; 24h blocks
+    }))
+)
+
+;; CORE FUNCTIONALITY
+
+(define-public (create-portfolio (initial-tokens (list 10 principal)) (percentages (list 10 uint)))
+    (let (
+        (portfolio-id (+ (var-get portfolio-counter) u1))
+        (token-count (len initial-tokens))
+        (percentage-count (len percentages))
+        (token-0 (element-at? initial-tokens u0))
+        (token-1 (element-at? initial-tokens u1))
+        (percentage-0 (element-at? percentages u0))
+        (percentage-1 (element-at? percentages u1))
+    )
+    ;; Validation layer
+    (asserts! (<= token-count MAX-TOKENS-PER-PORTFOLIO) ERR-MAX-TOKENS-EXCEEDED)
+    (asserts! (is-eq token-count percentage-count) ERR-LENGTH-MISMATCH)
+    (asserts! (validate-portfolio-percentages percentages) ERR-INVALID-PERCENTAGE)
+    
+    ;; Portfolio genesis
+    (map-set Portfolios portfolio-id
+        {
+            owner: tx-sender,
+            created-at: stacks-block-height,
+            last-rebalanced: stacks-block-height,
+            total-value: u0,
+            active: true,
+            token-count: token-count
+        }
+    )
+    
+    ;; Asset initialization
+    (asserts! (and (is-some token-0) (is-some token-1)) ERR-INVALID-TOKEN)
+    (asserts! (and (is-some percentage-0) (is-some percentage-1)) ERR-INVALID-PERCENTAGE)
+    
+    (try! (initialize-portfolio-asset 
+        u0 
+        (unwrap-panic token-0)
+        (unwrap-panic percentage-0)
+        portfolio-id))
+    
+    (try! (initialize-portfolio-asset 
+        u1
+        (unwrap-panic token-1)
+        (unwrap-panic percentage-1)
+        portfolio-id))
+    
+    ;; User state update
+    (try! (add-to-user-portfolios tx-sender portfolio-id))
+    (var-set portfolio-counter portfolio-id)
+    (ok portfolio-id))
+)
